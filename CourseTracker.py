@@ -88,7 +88,7 @@ def bytes_human(n: int) -> str:
 def safe_open_file(path: str):
 	try:
 		if os.name == "nt":
-			os.startfile(path)  # type: ignore[attr-defined]
+			os.startfile(path)
 		elif sys.platform == "darwin":
 			subprocess.call(["open", path])
 		else:
@@ -548,7 +548,7 @@ class LibraryPage(ctk.CTkFrame):
 
 		self.view_var = ctk.StringVar(value="Cards")
 		self.view_toggle = ctk.CTkSegmentedButton(
-			header, values=["Cards", "Table"], variable=self.view_var, command=self._on_view_changed
+			header, values=["Cards", "  List  "], variable=self.view_var, command=self._on_view_changed
 		)
 		self.view_toggle.grid(row=0, column=1, padx=10, pady=10, sticky="w")
 
@@ -560,9 +560,9 @@ class LibraryPage(ctk.CTkFrame):
 		self.stats_lbl = ctk.CTkLabel(self, text="", anchor="w")
 		self.stats_lbl.grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 6))
 
-		self.cards_scroll = ctk.CTkScrollableFrame(self, label_text="Courses (Cards)")
+		self.cards_scroll = ctk.CTkScrollableFrame(self, label_text="Your Courses")
 		self.cards_scroll.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 10))
-		self.cards_scroll.grid_columnconfigure((0, 1, 2), weight=1)
+		self.cards_scroll.grid_columnconfigure(0, weight=1)
 
 		self.table_frame = ctk.CTkFrame(self)
 		self.table_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 10))
@@ -596,7 +596,7 @@ class LibraryPage(ctk.CTkFrame):
 		columns = ("name", "files_pct", "size_pct", "last", "path")
 		self.tree = ttk.Treeview(self.table_frame, columns=columns, show="headings", selectmode="browse")
 
-		self.tree.heading("name", text="Course")
+		self.tree.heading("name", text="Your Courses")
 		self.tree.heading("files_pct", text="Files %")
 		self.tree.heading("size_pct", text="Size %")
 		self.tree.heading("last", text="Last opened")
@@ -626,12 +626,16 @@ class LibraryPage(ctk.CTkFrame):
 		self.app.open_course(course_id)
 
 	def _on_view_changed(self, value: str):
+		# Always forget both, then grid the chosen one with explicit geometry.
+		self.cards_scroll.grid_forget()
+		self.table_frame.grid_forget()
+
+		grid_opts = dict(row=2, column=0, sticky="nsew", padx=10, pady=(0, 10))
+
 		if value == "Cards":
-			self.table_frame.grid_remove()
-			self.cards_scroll.grid()
+			self.cards_scroll.grid(**grid_opts)
 		else:
-			self.cards_scroll.grid_remove()
-			self.table_frame.grid()
+			self.table_frame.grid(**grid_opts)
 		self.refresh()
 
 	def refresh(self):
@@ -651,7 +655,7 @@ class LibraryPage(ctk.CTkFrame):
 		for iid in self.tree.get_children():
 			self.tree.delete(iid)
 
-		cols = 3
+		cols = 1
 		rr = 0
 		cc = 0
 
@@ -660,7 +664,7 @@ class LibraryPage(ctk.CTkFrame):
 			files_pct = (completed_count / total_count * 100.0) if total_count else 0.0
 			size_pct = (completed_bytes / total_bytes * 100.0) if total_bytes else 0.0
 
-			last_text = "(none)"
+			last_text = "N/A"
 			if course.last_opened_item_id:
 				it = self.app.db.get_item_by_id(course.last_opened_item_id)
 				if it:
@@ -692,7 +696,7 @@ class LibraryPage(ctk.CTkFrame):
 
 			btn_row = ctk.CTkFrame(card, fg_color="transparent")
 			btn_row.grid(row=5, column=0, padx=12, pady=(0, 12), sticky="ew")
-			btn_row.grid_columnconfigure((0, 1, 2, 3), weight=1)
+			btn_row.grid_columnconfigure((0, 1, 2, 3, 4, 5, 6, 7, 8,), weight=1)
 
 			open_btn = ctk.CTkButton(btn_row, text="Open", command=lambda cid=course.id: self.app.open_course(cid))
 			open_btn.grid(row=0, column=0, padx=(0, 6), sticky="ew")
@@ -1053,8 +1057,17 @@ class CoursePage(ctk.CTkFrame):
 				name = str(it["name"])
 				size = int(it["size_bytes"] or 0)
 
-				lbl = ctk.CTkLabel(row, text=name, anchor="w")
+				lbl = ctk.CTkLabel(row, text=name, anchor="w", justify="left")
 				lbl.pack(side="left", padx=6, pady=6, fill="x", expand=True)
+
+				def _update_wrap(_evt=None, _row=row, _lbl=lbl):
+					# Reserve approx width for: checkbox + meta + 3 buttons + paddings (matches your widths). [file:1]
+					reserved = 22 + 90 + 34 + 70 + 95 + 180
+					w = _row.winfo_width()
+					wrap = max(200, w - reserved)
+					_lbl.configure(wraplength=wrap)
+
+				row.bind("<Configure>", _update_wrap)
 
 				meta = ctk.CTkLabel(row, text=bytes_human(size), width=90, anchor="e", text_color=TEXT_MUTED)
 				meta.pack(side="left", padx=6, pady=6)
@@ -1139,6 +1152,21 @@ class CoursePage(ctk.CTkFrame):
 
 	def _open_next_from(self, item_id: int):
 		self.app.db.set_completed(item_id, True)
+
+		# NEW: update the checkbox UI state immediately
+		w = self.item_widgets.get(item_id)
+		if w:
+			try:
+				w["var"].set(True)
+			except Exception:
+				pass
+
+		# If "Hide completed" is ON, the row should disappear from the list
+		if bool(self.hide_completed_var.get()):
+			# rebuild will re-filter out completed items
+			self._rebuild_ui(highlight_last=False)
+
+		# Update progress UI and other pages (existing behavior)
 		self._update_progress_ui()
 		self.app.library_page.refresh()
 
@@ -1148,7 +1176,6 @@ class CoursePage(ctk.CTkFrame):
 			return
 
 		if idx + 1 >= len(self.ordered_item_ids):
-			messagebox.showinfo("End", "Reached end of course items.")
 			return
 
 		next_id = self.ordered_item_ids[idx + 1]
@@ -1182,7 +1209,7 @@ class App(ctk.CTk):
 		self.grid_columnconfigure(1, weight=1)
 
 		# Sidebar
-		self.sidebar = ctk.CTkFrame(self, corner_radius=0, width=260)
+		self.sidebar = ctk.CTkFrame(self, corner_radius=0, width=150)
 		self.sidebar.grid(row=0, column=0, sticky="nsew")
 		self.sidebar.grid_rowconfigure(20, weight=1)
 
@@ -1244,6 +1271,19 @@ class App(ctk.CTk):
 
 		self.protocol("WM_DELETE_WINDOW", self.on_close)
 
+		# at the END of __init__:
+		self.after(0, self._maximize_on_start)
+
+	def _maximize_on_start(self):
+			try:
+				self.update_idletasks()
+				if os.name == "nt":
+					self.state("zoomed")  # Windows
+				else:
+					self.attributes("-zoomed", True)  # Linux (many WMs)
+			except Exception:
+				pass
+			
 	def on_close(self):
 		try:
 			self.db.close()
@@ -1267,7 +1307,6 @@ class App(ctk.CTk):
 			if c.id == course_id and c.last_opened_item_id:
 				self.course_page._open_item(c.last_opened_item_id)
 				return
-		messagebox.showinfo("Continue", "No last opened file for this course yet.\nOpen any file once to enable Continue.")
 
 	def add_course_folder(self):
 		path = filedialog.askdirectory(title="Select a course folder")
@@ -1303,9 +1342,9 @@ class App(ctk.CTk):
 			return
 
 		self.open_course(last.course_id)
-		self.db.set_completed(last.item_id, True)
-		self.course_page._update_progress_ui()
-		self.library_page.refresh()
+		# self.db.set_completed(last.item_id, True)
+		# self.course_page._update_progress_ui()
+		# self.library_page.refresh()
 		self.course_page._open_next_from(last.item_id)
 
 
