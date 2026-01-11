@@ -1144,11 +1144,10 @@ class CoursePage(ctk.CTkFrame):
 		if not it:
 			return
 
+		safe_open_file(str(it["abs_path"]))
 		self.app.db.record_open(self.course_id, item_id)
 		self.app.library_page.refresh()
-
 		self._highlight(item_id)
-		safe_open_file(str(it["abs_path"]))
 
 	def _open_next_from(self, item_id: int):
 		self.app.db.set_completed(item_id, True)
@@ -1166,10 +1165,6 @@ class CoursePage(ctk.CTkFrame):
 			# rebuild will re-filter out completed items
 			self._rebuild_ui(highlight_last=False)
 
-		# Update progress UI and other pages (existing behavior)
-		self._update_progress_ui()
-		self.app.library_page.refresh()
-
 		try:
 			idx = self.ordered_item_ids.index(item_id)
 		except ValueError:
@@ -1180,6 +1175,10 @@ class CoursePage(ctk.CTkFrame):
 
 		next_id = self.ordered_item_ids[idx + 1]
 		self._open_item(next_id)
+
+		# Update progress UI and other pages
+		self._update_progress_ui()
+		self.app.library_page.refresh()
 
 	def _highlight(self, item_id: int):
 		for iid, w in self.item_widgets.items():
@@ -1342,9 +1341,6 @@ class App(ctk.CTk):
 			return
 
 		self.open_course(last.course_id)
-		# self.db.set_completed(last.item_id, True)
-		# self.course_page._update_progress_ui()
-		# self.library_page.refresh()
 		self.course_page._open_next_from(last.item_id)
 
 

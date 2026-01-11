@@ -33,6 +33,11 @@ Clone this repository and install the dependencies:
 
 TKinter and customTkinter.
 
+```bash
+pip install customTkinter
+pip install pyinstaller
+```
+
 
 ## 📂 How It Works
 
@@ -59,5 +64,6 @@ TKinter and customTkinter.
 To create a standalone executable using [PyInstaller](https://pyinstaller.org/):
 
 ```bash
-pyinstaller --onefile --noconsole main.py
+pyinstaller --windowed CourseTracker.py
+pyinstaller --onefile CourseTracker.py
 ```
